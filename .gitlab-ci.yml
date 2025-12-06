@@ -1,32 +1,33 @@
 stages:
+  - test
   - security
 
 include:
-  - template: Security/SAST.gitlab-ci.yml
-  - template: Security/Dependency-Scanning.gitlab-ci.yml
-  - template: Security/Secret-Detection.gitlab-ci.yml
-  - template: Security/Container-Scanning.gitlab-ci.yml
+  - template: Security/SAST.gitlab-ci.yml  # SAST for NestJS/React/TypeScript/Dart code
+  - template: Security/Dependency-Scanning.gitlab-ci.yml  # SCA for dependencies (like Snyk test)
+  - template: Security/Secret-Detection.gitlab-ci.yml  # Detects hardcoded secrets
+  - template: Security/Container-Scanning.gitlab-ci.yml  # Scans Docker images
 
 iac-scan:
   stage: security
-  image: bridgecrew/checkov:latest
+  image: bridgecrew/checkov:latest  # Tool for IaC scanning (Terraform)
   script:
     - checkov -d ./terraform --framework terraform --output cli --quiet
-  allow_failure: true
+  allow_failure: true  # Warn, don't fail build
 
 mobile-sast:
   stage: security
-  image: dart:stable
+  image: dart:stable  # For Flutter/Dart
   script:
     - cd mobile_app
-    - dart analyze .  
+    - dart analyze .  # Basic SAST for Dart; add more tools if needed (e.g., via pub)
   allow_failure: true
 
-snyk-sca:  
+snyk-sca:  # Optional: Integrate your Snyk scans
   stage: security
   image: node:latest
   variables:
-    SNYK_TOKEN: d4ca36f6-7c69-46dc-8817-fbe14b8f760a  
+    SNYK_TOKEN: $SNYK_TOKEN  # Add your Snyk token in GitLab CI variables
   script:
     - npm install -g snyk
     - snyk auth $SNYK_TOKEN
