@@ -11,13 +11,13 @@ include:
 
 build-images:  # New job to build Docker for scanning
   stage: build
-  image: docker:stable
+  image: docker:25.0  # Newer client with API 1.44
   services:
-    - docker:dind
+    - docker:25.0-dind  # Matching dind version
   script:
-    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
-    - docker build -t $CI_REGISTRY_IMAGE:latest .  # Assumes Dockerfile in root; adjust if in subdir
-    - docker push $CI_REGISTRY_IMAGE:latest
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"  # Secure login
+    - docker build -t "$CI_REGISTRY_IMAGE:latest" .  # Assumes Dockerfile in root; adjust if in subdir
+    - docker push "$CI_REGISTRY_IMAGE:latest"
   allow_failure: false  # Must succeed for scanning
 
 container_scanning:
