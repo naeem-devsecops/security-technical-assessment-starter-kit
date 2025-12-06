@@ -1,56 +1,88 @@
 stages:
-  - build  # New: For building Docker images before scanning
-  - test
-  - security
+  - build       # Build Docker image for container scanning
+  - test        # Built-in GitLab security templates
+  - security    # Extra security jobs (IaC, Flutter, Snyk)
 
+# Built-in GitLab security templates
 include:
   - template: Security/SAST.gitlab-ci.yml
   - template: Security/Dependency-Scanning.gitlab-ci.yml
   - template: Security/Secret-Detection.gitlab-ci.yml
   - template: Security/Container-Scanning.gitlab-ci.yml
 
-build-images:  # New job to build Docker for scanning
+# =========================
+# 1) Build backend image for container scanning
+# =========================
+build-image:
   stage: build
-  image: docker:25.0  # Newer client with API 1.44
+  image: docker:25.0
   services:
-    - docker:25.0-dind  # Matching dind version
+    - docker:25.0-dind
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
   script:
-    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"  # Secure login
-    - docker build -t "$CI_REGISTRY_IMAGE:latest" .  # Assumes Dockerfile in root; adjust if in subdir
-    - docker push "$CI_REGISTRY_IMAGE:latest"
-  allow_failure: false  # Must succeed for scanning
+    # Login to GitLab registry
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
 
+    # IMPORTANT: Dockerfile is in backend/, use it explicitly
+    # -f backend/Dockerfile  -> path to Dockerfile
+    # backend                -> build context directory
+    - docker build -f backend/Dockerfile -t "$CI_REGISTRY_IMAGE:latest" backend
+
+    # Push image so container_scanning can scan it
+    - docker push "$CI_REGISTRY_IMAGE:latest"
+  allow_failure: false
+
+# =========================
+# 2) Container scanning (override template job to use our image)
+# =========================
 container_scanning:
   stage: test
+  needs: ["build-image"]           # wait for image build
   variables:
-    TRIVY_TIMEOUT: 5m  # Fix common timeout
-    CS_IMAGE: $CI_REGISTRY_IMAGE:latest  # Use built image
-  allow_failure: true  # Warn on vulns, don't fail pipeline
+    CS_IMAGE: "$CI_REGISTRY_IMAGE:latest"
+    TRIVY_TIMEOUT: 5m
+  allow_failure: true              # show vulns but don't break whole pipeline
 
+# =========================
+# 3) IaC scanning (Terraform) with Checkov
+# =========================
 iac-scan:
   stage: security
   image: bridgecrew/checkov:latest
   script:
-    - checkov -d ./terraform --framework terraform --output cli --quiet --soft-fail  # --soft-fail: Don't exit on findings
+    - checkov -d ./terraform --framework terraform --output cli --quiet --soft-fail
   allow_failure: true
 
+# =========================
+# 4) Mobile (Flutter/Dart) static analysis
+# =========================
 mobile-sast:
   stage: security
-  image: cirrusci/flutter:latest  # Better for Flutter; has SDK
+  image: cirrusci/flutter:latest
   script:
     - cd mobile_app
-    - flutter pub get  # Install deps before analyze
-    - flutter analyze .  # Runs dart analyze + Flutter checks
+    - flutter pub get
+    - flutter analyze .
   allow_failure: true
 
+# =========================
+# 5) Snyk SCA for backend + frontend
+#    NOTE: set SNYK_TOKEN in GitLab → Settings → CI/CD → Variables
+# =========================
 snyk-sca:
   stage: security
-  image: node:latest
-  variables:
-    SNYK_TOKEN: d4ca36f6-7c69-46dc-8817-fbe14b8f760a
+  image: node:lts
   script:
     - npm install -g snyk
-    - snyk auth $SNYK_TOKEN
-    - cd backend && snyk test --severity-threshold=medium
-    - cd ../frontend && snyk test --severity-threshold=medium
+    - snyk auth "d4ca36f6-7c69-46dc-8817-fbe14b8f760a"
+
+    # Backend scan
+    - cd backend
+    - snyk test --severity-threshold=medium
+
+    # Frontend scan
+    - cd ../frontend
+    - snyk test --severity-threshold=medium
   allow_failure: true
