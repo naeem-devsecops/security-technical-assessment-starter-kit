@@ -1,33 +1,53 @@
 stages:
+  - build  # New: For building Docker images before scanning
   - test
   - security
 
 include:
-  - template: Security/SAST.gitlab-ci.yml  # SAST for NestJS/React/TypeScript/Dart code
-  - template: Security/Dependency-Scanning.gitlab-ci.yml  # SCA for dependencies (like Snyk test)
-  - template: Security/Secret-Detection.gitlab-ci.yml  # Detects hardcoded secrets
-  - template: Security/Container-Scanning.gitlab-ci.yml  # Scans Docker images
+  - template: Security/SAST.gitlab-ci.yml
+  - template: Security/Dependency-Scanning.gitlab-ci.yml
+  - template: Security/Secret-Detection.gitlab-ci.yml
+  - template: Security/Container-Scanning.gitlab-ci.yml
+
+build-images:  # New job to build Docker for scanning
+  stage: build
+  image: docker:stable
+  services:
+    - docker:dind
+  script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - docker build -t $CI_REGISTRY_IMAGE:latest .  # Assumes Dockerfile in root; adjust if in subdir
+    - docker push $CI_REGISTRY_IMAGE:latest
+  allow_failure: false  # Must succeed for scanning
+
+container_scanning:
+  stage: test
+  variables:
+    TRIVY_TIMEOUT: 5m  # Fix common timeout
+    CS_IMAGE: $CI_REGISTRY_IMAGE:latest  # Use built image
+  allow_failure: true  # Warn on vulns, don't fail pipeline
 
 iac-scan:
   stage: security
-  image: bridgecrew/checkov:latest  # Tool for IaC scanning (Terraform)
+  image: bridgecrew/checkov:latest
   script:
-    - checkov -d ./terraform --framework terraform --output cli --quiet
-  allow_failure: true  # Warn, don't fail build
+    - checkov -d ./terraform --framework terraform --output cli --quiet --soft-fail  # --soft-fail: Don't exit on findings
+  allow_failure: true
 
 mobile-sast:
   stage: security
-  image: dart:stable  # For Flutter/Dart
+  image: cirrusci/flutter:latest  # Better for Flutter; has SDK
   script:
     - cd mobile_app
-    - dart analyze .  # Basic SAST for Dart; add more tools if needed (e.g., via pub)
+    - flutter pub get  # Install deps before analyze
+    - flutter analyze .  # Runs dart analyze + Flutter checks
   allow_failure: true
 
-snyk-sca:  # Optional: Integrate your Snyk scans
+snyk-sca:
   stage: security
   image: node:latest
   variables:
-    SNYK_TOKEN: d4ca36f6-7c69-46dc-8817-fbe14b8f760a  # Add your Snyk token in GitLab CI variables
+    SNYK_TOKEN: d4ca36f6-7c69-46dc-8817-fbe14b8f760a
   script:
     - npm install -g snyk
     - snyk auth $SNYK_TOKEN
