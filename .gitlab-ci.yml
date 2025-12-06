@@ -27,7 +27,7 @@ snyk-sca:  # Optional: Integrate your Snyk scans
   stage: security
   image: node:latest
   variables:
-    SNYK_TOKEN: $SNYK_TOKEN  # Add your Snyk token in GitLab CI variables
+    SNYK_TOKEN: d4ca36f6-7c69-46dc-8817-fbe14b8f760a  # Add your Snyk token in GitLab CI variables
   script:
     - npm install -g snyk
     - snyk auth $SNYK_TOKEN
