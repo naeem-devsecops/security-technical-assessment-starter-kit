@@ -1,0 +1,35 @@
+stages:
+  - security
+
+include:
+  - template: Security/SAST.gitlab-ci.yml
+  - template: Security/Dependency-Scanning.gitlab-ci.yml
+  - template: Security/Secret-Detection.gitlab-ci.yml
+  - template: Security/Container-Scanning.gitlab-ci.yml
+
+iac-scan:
+  stage: security
+  image: bridgecrew/checkov:latest
+  script:
+    - checkov -d ./terraform --framework terraform --output cli --quiet
+  allow_failure: true
+
+mobile-sast:
+  stage: security
+  image: dart:stable
+  script:
+    - cd mobile_app
+    - dart analyze .  
+  allow_failure: true
+
+snyk-sca:  
+  stage: security
+  image: node:latest
+  variables:
+    SNYK_TOKEN: d4ca36f6-7c69-46dc-8817-fbe14b8f760a  
+  script:
+    - npm install -g snyk
+    - snyk auth $SNYK_TOKEN
+    - cd backend && snyk test --severity-threshold=medium
+    - cd ../frontend && snyk test --severity-threshold=medium
+  allow_failure: true
