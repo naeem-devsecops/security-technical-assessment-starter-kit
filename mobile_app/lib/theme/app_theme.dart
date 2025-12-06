@@ -94,13 +94,14 @@ class AppTheme {
           ),
         ),
       ),
-      cardTheme: CardTheme(
-        color: surfaceColor,
-        elevation: 4,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-      ),
+      // ... cardTheme: CardTheme(
+      //  color: surfaceColor,
+      //  elevation: 4,
+      //  shape: RoundedRectangleBorder(
+      //    borderRadius: BorderRadius.circular(16),
+      //  ),
+     // ),
+      // ...
     );
   }
 }
